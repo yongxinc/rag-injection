@@ -1,0 +1,5 @@
+# 單元測試只需要 pytest(>= 7),不需要 MyMind 或 Ollama:
+#   pip install pytest && pytest
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]
