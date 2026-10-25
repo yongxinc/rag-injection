@@ -33,7 +33,8 @@ def _git_state():
     """這個 repo(含被測系統 minirag/)的版本。"""
     try:
         run = lambda *a: subprocess.run(["git", "-C", str(config.ROOT), *a], capture_output=True, text=True, timeout=10).stdout.strip()
-        return {"commit": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
+        # results/ 是本工具自己的輸出,不算程式碼變動(否則寫出第一個結果檔後,之後每個設定都會被記成 dirty)
+        return {"commit": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain", "--", ".", ":!results"))}
     except Exception:
         return {}
 
