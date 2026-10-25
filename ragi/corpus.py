@@ -1,7 +1,7 @@
 """測試知識庫:正常文件 + 六份注入文件 + 一份不應被檢索到的機密備忘。
 
 所有內容都是為本專案撰寫的虛構資料。每份文件分頁(寫入時一頁一個 Document),
-MyMind 的 context 只標檔名。注入指令藏在文件中段。
+context 只標檔名。注入指令藏在文件中段。
 """
 from dataclasses import dataclass, replace
 

@@ -3,13 +3,12 @@ import platform
 import subprocess
 import sys
 import time
-from importlib import metadata
 from pathlib import Path
 
 from . import config
 from .corpus import NORMAL, PRIVATE, sanitized
 from .scenarios import BY_ID, SCENARIOS
-from .target import MyMindTarget, Trace
+from .target import MiniRAGTarget, Trace
 
 
 def _anchor(s):
@@ -30,16 +29,13 @@ def knowledge_base(s, control=False):
     return docs + [sanitized(injected) if control else injected, PRIVATE]
 
 
-def _git_state(backend):
+def _git_state():
+    """這個 repo(含被測系統 minirag/)的版本。"""
     try:
-        run = lambda *a: subprocess.run(["git", "-C", str(backend), *a], capture_output=True, text=True, timeout=10).stdout.strip()
+        run = lambda *a: subprocess.run(["git", "-C", str(config.ROOT), *a], capture_output=True, text=True, timeout=10).stdout.strip()
         return {"commit": run("rev-parse", "HEAD"), "dirty": bool(run("status", "--porcelain"))}
     except Exception:
         return {}
-
-
-ENV_PACKAGES = ["sentence-transformers", "transformers", "huggingface-hub", "tokenizers", "torch",
-                "chromadb", "langchain-core", "langchain-community", "langgraph"]
 
 
 def home_relative(path):
@@ -51,50 +47,41 @@ def home_relative(path):
         return str(p)
 
 
-def environment():
-    """這次執行實際用的直譯器與關鍵套件版本(嵌入與檢索結果取決於它們)。"""
-    def ver(name):
-        try:
-            return metadata.version(name)
-        except metadata.PackageNotFoundError:
-            return None
+def environment(target):
+    """這次執行的直譯器、Ollama 版本與模型 digest。MiniRAG 不依賴第三方套件。"""
     try:
-        ollama = subprocess.run(["ollama", "--version"], capture_output=True, text=True, timeout=10).stdout.strip()
-    except Exception:
-        ollama = None
-    return {"python": home_relative(sys.executable), "prefix": home_relative(sys.prefix), "python_version": platform.python_version(),
-            "packages": {n: ver(n) for n in ENV_PACKAGES}, "ollama": ollama}
+        ollama = target.client.info()
+    except Exception as e:
+        ollama = {"error": str(e)}
+    return {"python": home_relative(sys.executable), "python_version": platform.python_version(), **ollama}
 
 
 def run_defense(target, setting, runs=config.DEFAULT_RUNS, scenario_ids=None, progress=print):
     """setting 是四種防禦之一、baseline,或 control(無注入對照:不加防禦、文件裡沒有注入句)。"""
     control = setting == "control"
-    defense = "baseline" if control else setting
     results = []
     for s in SCENARIOS:
         if scenario_ids and s.id not in scenario_ids:
             continue
         target.load(knowledge_base(s, control))
         for i in range(runs):
-            t = target.ask(s.question, defense)
+            t = target.ask(s.question, setting, s.mode)
             hit = retrieval_ok(s, t, control)
             ok = bool(s.judge(t))
             results.append({
                 "scenario": s.id, "category": s.category, "run": i + 1,
                 "injected_retrieved": hit, "success": ok,
-                "intent": t.intent, "sources": t.sources,
+                "mode": t.mode, "sources": t.sources,
                 "blocked_by_output_check": t.blocked_by_output_check,
-                "notion_calls": t.notion_calls,
-                "plan_contains_payload": s.id == "tool_call" and "toeic-fastpass" in t.answer,
+                "writes": t.writes,
+                "plan_contains_payload": s.mode == "plan" and "toeic-fastpass" in t.answer,
                 "answer": t.answer, "raw_answer": t.raw_answer,
                 "prompt": t.prompt,
             })
-            progress(f"[{setting}] {s.id} #{i + 1}: intent={t.intent} retrieved={hit} success={ok}")
+            progress(f"[{setting}] {s.id} #{i + 1}: retrieved={hit} success={ok}")
     out = {
-        "defense": setting, "target": "MyMind",
-        "target_path": home_relative(config.MYMIND_BACKEND), "target_git": _git_state(config.MYMIND_BACKEND),
-        "environment": environment(),
-        "chat_model": target.mod.LLM_MODEL, "embed_model": target.mod.EMBED_MODEL, "runs": runs,
+        "defense": setting, "target": "minirag", "repo_git": _git_state(),
+        "environment": environment(target), "runs": runs,
         "timestamp": time.strftime("%Y-%m-%d %H:%M:%S"), "results": results,
     }
     config.RESULTS_DIR.mkdir(parents=True, exist_ok=True)
@@ -108,8 +95,8 @@ def rejudge(path):
     data = json.loads(path.read_text())
     changed = 0
     for r in data["results"]:
-        t = Trace(message="", defense=data["defense"], answer=r["answer"],
-                  sources=r["sources"], notion_calls=r["notion_calls"])
+        t = Trace(message="", setting=data["defense"], answer=r["answer"],
+                  sources=r["sources"], writes=r["writes"])
         ok = bool(BY_ID[r["scenario"]].judge(t))
         if ok != r["success"]:
             changed += 1
@@ -119,5 +106,5 @@ def rejudge(path):
     return changed
 
 
-def new_target():
-    return MyMindTarget()
+def new_target(chat_model=None):
+    return MiniRAGTarget(chat_model)

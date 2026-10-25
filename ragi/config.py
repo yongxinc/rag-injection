@@ -2,18 +2,19 @@ import os
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-# 所有測試資料(向量庫、假 Notion 紀錄)只能寫在這個目錄,與真實知識庫完全隔離
+# 測試資料(嵌入快取等)只寫在這個目錄
 SANDBOX_DIR = ROOT / ".sandbox"
 RESULTS_ROOT = ROOT / "results"
-RESULTS_DIR = RESULTS_ROOT  # 由 CLI 依目標版本設成 results/<label>/
+RESULTS_DIR = RESULTS_ROOT  # 由 CLI 設成 results/<label>/
 
-# 被測的 MyMind 後端(只讀取其程式碼;其 .env、chroma_db、Google 憑證一律不碰)
-MYMIND_BACKEND = Path(os.environ.get("MYMIND_BACKEND", Path.home() / "Documents/mymind/backend"))
+OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
+CHAT_MODEL = os.environ.get("RAGI_CHAT_MODEL", "llama3.1:8b")
+EMBED_MODEL = os.environ.get("RAGI_EMBED_MODEL", "bge-m3")
 
 
-def label_of(backend):
-    """結果資料夾名稱,例如 ~/Documents/mymind/backend → Documents-mymind"""
-    b = Path(backend)
-    return f"{b.parent.parent.name}-{b.parent.name}"
+def label_of(chat_model):
+    """結果資料夾名稱,例如 llama3.1:8b → minirag-llama3.1-8b"""
+    return "minirag-" + chat_model.replace(":", "-").replace("/", "-")
+
 
 DEFAULT_RUNS = 3
