@@ -27,11 +27,16 @@ def main():
     rj.add_argument("--label")
 
     sub.add_parser("list", help="列出情境")
+    sub.add_parser("screen-eval", help="ingest_filter 的留出測試:量規則對沒看過的說法的涵蓋率與誤判")
     a = p.parse_args()
 
     if a.cmd == "list":
         for s in SCENARIOS:
             print(f"{s.id:13} {s.category:8} {s.injected_file:30} 判定: {s.criterion}")
+        return
+    if a.cmd == "screen-eval":
+        from .screening_eval import report as screen_report
+        screen_report()
         return
     if a.cmd in ("run", "report", "rejudge"):
         config.RESULTS_DIR = config.RESULTS_ROOT / (a.label or config.label_of(a.chat_model))
