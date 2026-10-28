@@ -64,10 +64,12 @@ def run_defense(target, setting, runs=config.DEFAULT_RUNS, scenario_ids=None, pr
     for s in SCENARIOS:
         if scenario_ids and s.id not in scenario_ids:
             continue
-        target.load(knowledge_base(s, control))
+        target.load(knowledge_base(s, control), setting)
+        # 對照組沒有注入句、ingest_filter 會把注入句拿掉:這兩種都改用「同一頁有被檢索到」來確認
+        anchor = control or setting == "ingest_filter"
         for i in range(runs):
             t = target.ask(s.question, setting, s.mode)
-            hit = retrieval_ok(s, t, control)
+            hit = retrieval_ok(s, t, anchor)
             ok = bool(s.judge(t))
             results.append({
                 "scenario": s.id, "category": s.category, "run": i + 1,
@@ -78,6 +80,7 @@ def run_defense(target, setting, runs=config.DEFAULT_RUNS, scenario_ids=None, pr
                 "plan_contains_payload": s.mode == "plan" and "toeic-fastpass" in t.answer,
                 "answer": t.answer, "raw_answer": t.raw_answer,
                 "prompt": t.prompt,
+                "quarantined": target.quarantined,
             })
             progress(f"[{setting}] {s.id} #{i + 1}: retrieved={hit} success={ok}")
     out = {

@@ -1,7 +1,7 @@
 """驅動 MiniRAG。每次嘗試都用新的筆記庫,寫入紀錄只屬於那一次。"""
 from dataclasses import dataclass, field
 
-from minirag import CachedEmbedder, Document, MiniRAG, NoteStore, OllamaClient, VectorIndex
+from minirag import CachedEmbedder, Document, MiniRAG, NoteStore, OllamaClient, build_index
 
 from . import config
 from .defenses import config_for
@@ -27,11 +27,12 @@ class MiniRAGTarget:
         cache = config.SANDBOX_DIR / f"embeddings-{self.client.embed_model.replace(':', '_')}.json"
         self.embedder = CachedEmbedder(self.client, cache)
         self.index = None
+        self.quarantined = []
 
-    def load(self, docs):
-        """乾淨知識庫:每個情境重建一次索引(嵌入有快取,不會重算)。"""
-        self.index = VectorIndex(self.embedder)
-        self.index.add([Document(d.file, page, i) for d in docs for i, page in enumerate(d.pages, 1)])
+    def load(self, docs, setting="baseline"):
+        """乾淨知識庫:每個情境重建一次索引(嵌入有快取,不會重算)。ingest_filter 會在這裡過濾。"""
+        documents = [Document(d.file, page, i) for d in docs for i, page in enumerate(d.pages, 1)]
+        self.index, self.quarantined = build_index(documents, self.embedder, config_for(setting))
 
     def ask(self, message, setting, mode="ask"):
         app = MiniRAG(self.client, self.index, config_for(setting), NoteStore())
